@@ -10,11 +10,12 @@ public class GetNeighborSystem : JobComponentSystem
 {
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        EntityQuery queries = GetEntityQuery(typeof(Translation), typeof(BoidTagData));
+        EntityQuery queries = GetEntityQuery(typeof(Translation), typeof(BoidTagData), typeof(PhysicsVelocity));
         NativeArray<Translation> positions = queries.ToComponentDataArray<Translation>(Allocator.TempJob);
-        NativeArray<BoidMoveData> moveData = queries.ToComponentDataArray<BoidMoveData>(Allocator.TempJob);
+        NativeArray<PhysicsVelocity> velocities = queries.ToComponentDataArray<PhysicsVelocity>(Allocator.TempJob);
         NativeArray<BoidTagData> tags = queries.ToComponentDataArray<BoidTagData>(Allocator.TempJob);
         float neighborRadius = FlockManagerECS.instance.neighborRadius;
+        float maxNeighbor = FlockManagerECS.instance.maxNeighbor;
 
         JobHandle handler = Entities.ForEach((ref DynamicBuffer<RigidBodyBufferElement> neighbors, in Translation pos, in BoidTagData tag) =>
         {
@@ -22,18 +23,19 @@ public class GetNeighborSystem : JobComponentSystem
             for (int i = 0; i < positions.Length; i++)
             {
                 if (tag.uid == tags[i].uid) continue;
-                if (math.distancesq(pos.Value, positions[i].Value) < neighborRadius)
+                if (neighbors.Length == maxNeighbor) break;
+                if (math.distancesq(pos.Value, positions[i].Value) < neighborRadius * neighborRadius)
                 {
-                    neighbors.Add(new RigidBodyBufferElement { position = positions[i].Value, velocity = moveData[i].velocity });
+                    neighbors.Add(new RigidBodyBufferElement { position = positions[i].Value, velocity = velocities[i].Linear });
                 }
             }
         })
             .WithReadOnly(positions)
             .WithReadOnly(tags)
-            .WithReadOnly(moveData)
+            .WithReadOnly(velocities)
             .WithDisposeOnCompletion(positions)
             .WithDisposeOnCompletion(tags)
-            .WithDisposeOnCompletion(moveData)
+            .WithDisposeOnCompletion(velocities)
             .Schedule(inputDeps);
 
         return handler;
