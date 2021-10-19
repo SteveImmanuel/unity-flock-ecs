@@ -232,6 +232,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   forceMagnitude: 1
+  maxX: 0
+  minX: 0
+  maxY: 0
+  minY: 0
+  maxZ: 0
+  minZ: 0
   xPositive: 1
   xNegative: 1
   yPositive: 1
@@ -525,7 +531,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1107111437
 Transform:
   m_ObjectHideFlags: 0
@@ -534,7 +540,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1107111436}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 10, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -549,12 +555,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 1107111436}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 33c7dab6528d7c04f9b5189e2dbc33fd, type: 3}
+  m_Script: {fileID: 11500000, guid: b1c736cff00636649a05575b0b0aba1e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  boidPrefab: {fileID: 5855206804167591804, guid: 62d89967ee560b94a8e10ff21ab9c870, type: 3}
-  spawnRadius: 10
-  totalBoids: 500
+  maxSpeed: 5
+  neighborRadius: 10
+  alignmentWeight: 1
+  cohesionWeight: 1
+  separationWeight: 2
 --- !u!1 &1116067278
 GameObject:
   m_ObjectHideFlags: 0
@@ -962,8 +970,8 @@ GameObject:
   - component: {fileID: 4008699949404376809}
   - component: {fileID: 3215921072934252351}
   - component: {fileID: 8753766595354095491}
-  - component: {fileID: 3215921072934252349}
   - component: {fileID: 3215921072934252350}
+  - component: {fileID: 3215921072934252353}
   m_Layer: 6
   m_Name: BoidECS
   m_TagString: Boid
@@ -971,45 +979,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &3215921072934252349
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3215921072934252348}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d990b9fb508fa8146b531856ab1c1012, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  rotationCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 4.81143
-      outSlope: 4.81143
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.036428344
-    - serializedVersion: 3
-      time: 1.0011597
-      value: 0.0042266846
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  totalRotation: 1
-  rotationFrames: 300
-  maxSpeed: 10
 --- !u!114 &3215921072934252350
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1039,6 +1008,18 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 3
+--- !u!114 &3215921072934252353
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3215921072934252348}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca907c09253c9c04795fd58c8eb82fe4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!23 &4008699949404376809
 MeshRenderer:
   m_ObjectHideFlags: 0
