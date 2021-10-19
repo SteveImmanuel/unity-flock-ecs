@@ -63,7 +63,7 @@ public class FlockManagerECS : MonoBehaviour
             manager.SetComponentData(entities[i], new PhysicsVelocity { Linear = randomVel });
             manager.AddComponentData(entities[i], new BoidTagData { uid = Random.Range(0, 10000000) });
             manager.AddComponentData(entities[i], new MaxSpeed { Value = maxSpeed });
-            manager.AddBuffer<RigidBodyBufferElement>(entities[i]);
+            //manager.AddBuffer<RigidBodyBufferElement>(entities[i]);
         }
 
         entities.Dispose();
