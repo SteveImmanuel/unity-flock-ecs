@@ -4,13 +4,14 @@ using UnityEngine;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Transforms;
+using Unity.Physics;
 
 public class FlockManagerECS : MonoBehaviour
 {
     [Header("Flock Config")]
     public GameObject boidPrefab;
     public float maxSpeed = 5f;
-    public float maxNeighbor;
+    public float maxNeighbor = 100;
     public float neighborRadius = 2f;
     public float alignmentWeight = 1;
     public float cohesionWeight = 1;
@@ -55,9 +56,14 @@ public class FlockManagerECS : MonoBehaviour
             Vector3 randomNormalizedVector = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized;
             Vector3 randomPos = transform.position + randomNormalizedVector * Random.Range(0f, spawnRadius);
             Quaternion randomRot = Quaternion.LookRotation(randomNormalizedVector);
+            Vector3 randomVel = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized * maxSpeed;
 
             manager.SetComponentData(entities[i], new Translation { Value = randomPos });
             manager.SetComponentData(entities[i], new Rotation { Value = randomRot });
+            manager.SetComponentData(entities[i], new PhysicsVelocity { Linear = randomVel });
+            manager.AddComponentData(entities[i], new BoidTagData { uid = Random.Range(0, 10000000) });
+            manager.AddComponentData(entities[i], new MaxSpeed { Value = maxSpeed });
+            manager.AddBuffer<RigidBodyBufferElement>(entities[i]);
         }
 
         entities.Dispose();
