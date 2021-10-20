@@ -2,28 +2,33 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Entities;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Collections;
 using Unity.Transforms;
-using Unity.Physics;
+using Unity.Jobs;
 
 public class FlockManagerECS : MonoBehaviour
 {
-    [Header("Flock Config")]
-    public GameObject boidPrefab;
-    public float maxSpeed = 5f;
-    public float maxNeighbor = 100;
-    public float neighborRadius = 2f;
-    public float alignmentWeight = 1;
-    public float cohesionWeight = 1;
-    public float separationWeight = 2;
-    public float spawnRadius = 10f;
-    public int totalBoids = 100;
+    [System.Serializable]
+    public struct BoidType
+    {
+        public float maxSpeed;
+        public float neighborRadius;
+        public float alignmentWeight;
+        public float separationWeight;
+        public GameObject boidPrefab;
+        public int total;
+        public Vector3 centerSpawnPoint;
+        public float spawnRadius;
+    }
+
+    public BoidType[] boidTypes;
 
     public static FlockManagerECS instance;
 
     private EntityManager manager;
-    private Entity boidEntity;
     private BlobAssetStore blobAssetStore;
+    private GameObjectConversionSettings settings;
 
     private void Awake()
     {
@@ -37,31 +42,40 @@ public class FlockManagerECS : MonoBehaviour
 
         blobAssetStore = new BlobAssetStore();
         manager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        GameObjectConversionSettings settings = GameObjectConversionSettings.FromWorld(World.DefaultGameObjectInjectionWorld, blobAssetStore);
-        boidEntity = GameObjectConversionUtility.ConvertGameObjectHierarchy(boidPrefab, settings);
+        settings = GameObjectConversionSettings.FromWorld(World.DefaultGameObjectInjectionWorld, blobAssetStore);
     }
 
     private void Start()
     {
-        Spawn(totalBoids);
+        for (int i = 0; i < boidTypes.Length; i++)
+        {
+            Spawn(boidTypes[i]);
+        }
     }
 
-    private void Spawn(int n)
+    private void Spawn(BoidType boidType)
     {
-        NativeArray<Entity> entities = new NativeArray<Entity>(n, Allocator.TempJob);
+        Entity boidEntity = GameObjectConversionUtility.ConvertGameObjectHierarchy(boidType.boidPrefab, settings);
+        NativeArray<Entity> entities = new NativeArray<Entity>(boidType.total, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
         manager.Instantiate(boidEntity, entities);
 
-        for (int i = 0; i < n; i++)
+        BoidData sharedBoidData = new BoidData
+        {
+            alignmentWeight = boidType.alignmentWeight,
+            separationWeight = boidType.separationWeight,
+            maxSpeed = boidType.maxSpeed,
+            neighborRadius = boidType.neighborRadius
+        };
+
+        for (int i = 0; i < entities.Length; i++)
         {
             Vector3 randomNormalizedVector = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized;
-            Vector3 randomPos = transform.position + randomNormalizedVector * Random.Range(0f, spawnRadius);
-            Quaternion randomRot = Quaternion.LookRotation(randomNormalizedVector);
-            Vector3 randomVel = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized * maxSpeed;
+            Vector3 randomPos = boidType.centerSpawnPoint + randomNormalizedVector * Random.Range(0f, boidType.spawnRadius);
+            Vector3 heading = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized;
 
             manager.SetComponentData(entities[i], new Translation { Value = randomPos });
-            manager.SetComponentData(entities[i], new Rotation { Value = randomRot });
-            manager.AddComponentData(entities[i], new BoidTagData { uid = i });
-            manager.AddComponentData(entities[i], new SpeedData { maximum = maxSpeed, velocity = randomVel });
+            manager.AddComponentData(entities[i], new HeadingData { Value = heading });
+            manager.AddSharedComponentData(entities[i], sharedBoidData);
         }
 
         entities.Dispose();
