@@ -1,7 +1,8 @@
 using Unity.Entities;
 using Unity.Mathematics;
 
-public struct MaxSpeed : IComponentData
+public struct SpeedData : IComponentData
 {
-    public float Value;
+    public float maximum;
+    public float3 velocity;
 }
