@@ -6,7 +6,6 @@ using Unity.Collections;
 using Unity.Transforms;
 using System.Collections.Generic;
 
-[AlwaysSynchronizeSystem]
 public class FlockBehaviourSystem : SystemBase
 {
     private EntityQuery queries;
@@ -63,7 +62,6 @@ public class FlockBehaviourSystem : SystemBase
 
     protected override void OnUpdate()
     {
-        Random random = new Random(13517039);
         float deltaTime = Time.DeltaTime;
         EntityManager.GetAllUniqueSharedComponentData(boidTypes);
 
@@ -124,7 +122,7 @@ public class FlockBehaviourSystem : SystemBase
                     heading.Value = math.normalizesafe(heading.Value);
 
                     rot.Value = quaternion.LookRotationSafe(heading.Value, math.up());
-                    pos.Value += heading.Value * (boidType.maxSpeed + random.NextFloat(-0.1f, 0.1f)) * deltaTime;
+                    pos.Value += heading.Value * boidType.maxSpeed * deltaTime;
                 })
                 .WithReadOnly(alignment)
                 .WithReadOnly(separation)
