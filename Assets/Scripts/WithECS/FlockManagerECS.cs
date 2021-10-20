@@ -16,6 +16,8 @@ public class FlockManagerECS : MonoBehaviour
         public float neighborRadius;
         public float alignmentWeight;
         public float separationWeight;
+        public float targetWeight;
+        public float minPredatorDistance;
         public GameObject boidPrefab;
         public int total;
         public Vector3 centerSpawnPoint;
@@ -64,7 +66,9 @@ public class FlockManagerECS : MonoBehaviour
             alignmentWeight = boidType.alignmentWeight,
             separationWeight = boidType.separationWeight,
             maxSpeed = boidType.maxSpeed,
-            neighborRadius = boidType.neighborRadius
+            neighborRadius = boidType.neighborRadius,
+            targetWeight = boidType.targetWeight,
+            minPredatorDistance = boidType.minPredatorDistance
         };
 
         for (int i = 0; i < entities.Length; i++)

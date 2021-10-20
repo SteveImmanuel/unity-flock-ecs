@@ -8,7 +8,9 @@ using System.Collections.Generic;
 
 public class FlockBehaviourSystem : SystemBase
 {
-    private EntityQuery queries;
+    private EntityQuery boidQueries;
+    private EntityQuery targetBoidQueries;
+    private EntityQuery predatorBoidQueries;
     private List<BoidData> boidTypes;
 
     private struct BoidInfo
@@ -18,10 +20,17 @@ public class FlockBehaviourSystem : SystemBase
         public float3 velocity;
     }
 
+    private struct DistanceInfo
+    {
+        public float distanceSq;
+        public float3 vector;
+    }
+
     private struct CalculateFlockVectorJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<uint> uniqueKeys;
         [ReadOnly] public NativeMultiHashMap<uint, BoidInfo> multiHashMap;
+
         [NativeDisableContainerSafetyRestriction] public NativeArray<float3> alignmentArray;
         [NativeDisableContainerSafetyRestriction] public NativeArray<float3> separationArray;
 
@@ -46,8 +55,8 @@ public class FlockBehaviourSystem : SystemBase
 
                 localAlignment /= (totalBoid - 1);
                 localSeparation = boidInfo.position - (localSeparation / (totalBoid - 1));
-                alignmentArray[boidInfo.entityIndex] = localAlignment;
-                separationArray[boidInfo.entityIndex] = localSeparation;
+                alignmentArray[boidInfo.entityIndex] = math.normalizesafe(localAlignment);
+                separationArray[boidInfo.entityIndex] = math.normalizesafe(localSeparation);
             }
 
         }
@@ -55,7 +64,9 @@ public class FlockBehaviourSystem : SystemBase
 
     protected override void OnCreate()
     {
-        queries = GetEntityQuery(typeof(Translation), typeof(HeadingData), typeof(BoidData));
+        boidQueries = GetEntityQuery(typeof(Translation), typeof(HeadingData), typeof(BoidData));
+        targetBoidQueries = GetEntityQuery(typeof(TargetTagData));
+        predatorBoidQueries = GetEntityQuery(typeof(PredatorTagData));
         boidTypes = new List<BoidData>();
     }
 
@@ -63,24 +74,49 @@ public class FlockBehaviourSystem : SystemBase
     protected override void OnUpdate()
     {
         float deltaTime = Time.DeltaTime;
-        EntityManager.GetAllUniqueSharedComponentData(boidTypes);
+        float INFINITE = 99999999;
+        int totalTarget = targetBoidQueries.CalculateEntityCount();
+        int totalPredator = predatorBoidQueries.CalculateEntityCount();
 
+        EntityManager.GetAllUniqueSharedComponentData(boidTypes);
         for (int typeIndex = 0; typeIndex < boidTypes.Count; typeIndex++)
         {
             BoidData boidType = boidTypes[typeIndex];
-            queries.AddSharedComponentFilter(boidType);
-            int totalBoid = queries.CalculateEntityCount();
+            boidQueries.AddSharedComponentFilter(boidType);
+            int totalBoid = boidQueries.CalculateEntityCount();
 
             if (totalBoid == 0)
             {
-                queries.ResetFilter();
+                boidQueries.ResetFilter();
                 continue;
             }
 
             NativeMultiHashMap<uint, BoidInfo> multiHashMap = new NativeMultiHashMap<uint, BoidInfo>(totalBoid, Allocator.TempJob);
             NativeArray<float3> alignment = new NativeArray<float3>(totalBoid, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
             NativeArray<float3> separation = new NativeArray<float3>(totalBoid, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            NativeArray<DistanceInfo> towardTargetVector = new NativeArray<DistanceInfo>(totalBoid, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            NativeArray<DistanceInfo> avoidPredatorVector = new NativeArray<DistanceInfo>(totalBoid, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            NativeArray<float3> targetPos = new NativeArray<float3>(totalTarget, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            NativeArray<float3> predatorPos = new NativeArray<float3>(totalPredator, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
             NativeArray<uint> hashBoidPos = new NativeArray<uint>(totalBoid, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+
+            JobHandle populateTargetPosHandle = Entities
+                .WithAll<TargetTagData>()
+                .WithName("PopulateTargetPosition")
+                .ForEach((int entityInQueryIndex, in Translation pos) =>
+                {
+                    targetPos[entityInQueryIndex] = pos.Value;
+                })
+                .ScheduleParallel(Dependency);
+
+            JobHandle populatePredatorPosHandle = Entities
+                .WithAll<PredatorTagData>()
+                .WithName("PopulatePredatorPosition")
+                .ForEach((int entityInQueryIndex, in Translation pos) =>
+                {
+                    predatorPos[entityInQueryIndex] = pos.Value;
+                })
+                .ScheduleParallel(Dependency);
 
             JobHandle populateHashHandle = Entities
                 .WithSharedComponentFilter(boidType)
@@ -90,6 +126,59 @@ public class FlockBehaviourSystem : SystemBase
                     hashBoidPos[entityInQueryIndex] = math.hash(new int3(math.floor(pos.Value / boidType.neighborRadius)));
                 })
                 .ScheduleParallel(Dependency);
+
+            JobHandle findNearestTargetHandle = Entities
+                .WithSharedComponentFilter(boidType)
+                .WithName("FindNearestTarget")
+                .ForEach((int entityInQueryIndex, in Translation pos) =>
+                {
+                    float nearestDistanceSq = INFINITE;
+                    int nearestIdx = -1;
+
+                    for (int i = 0; i < targetPos.Length; i++)
+                    {
+                        float tempLengthSq = math.lengthsq(pos.Value - targetPos[i]);
+                        if (tempLengthSq < nearestDistanceSq)
+                        {
+                            nearestIdx = i;
+                            nearestDistanceSq = tempLengthSq;
+                        }
+                    }
+                    towardTargetVector[entityInQueryIndex] = new DistanceInfo
+                    {
+                        distanceSq = nearestDistanceSq,
+                        vector = math.normalizesafe(targetPos[nearestIdx] - pos.Value)
+                    };
+
+                })
+                .WithReadOnly(targetPos)
+                .ScheduleParallel(populateTargetPosHandle);
+
+            JobHandle findNearestPredatorHandle = Entities
+                .WithSharedComponentFilter(boidType)
+                .WithName("FindNearestPredator")
+                .ForEach((int entityInQueryIndex, in Translation pos) =>
+                {
+                    float nearestDistanceSq = INFINITE;
+                    int nearestIdx = -1;
+
+                    for (int i = 0; i < predatorPos.Length; i++)
+                    {
+                        float tempLengthSq = math.lengthsq(pos.Value - predatorPos[i]);
+                        if (tempLengthSq < nearestDistanceSq)
+                        {
+                            nearestIdx = i;
+                            nearestDistanceSq = tempLengthSq;
+                        }
+                    }
+                    avoidPredatorVector[entityInQueryIndex] = new DistanceInfo
+                    {
+                        distanceSq = nearestDistanceSq,
+                        vector = math.normalizesafe(pos.Value - predatorPos[nearestIdx])
+                    };
+                })
+                .WithReadOnly(predatorPos)
+                .ScheduleParallel(populatePredatorPosHandle);
 
             var parallelHashMap = multiHashMap.AsParallelWriter();
             JobHandle populateMultiHashMapHandle = Entities
@@ -113,12 +202,23 @@ public class FlockBehaviourSystem : SystemBase
             };
 
             JobHandle calculateFlockVectorHandle = calculateFlockVector.Schedule(multiHashMapKey.Item2, 10, populateMultiHashMapHandle);
+
+            JobHandle synchcronizePoint = JobHandle.CombineDependencies(calculateFlockVectorHandle, findNearestPredatorHandle, findNearestTargetHandle);
+
             JobHandle steerBoidHandle = Entities
                 .WithSharedComponentFilter(boidType)
                 .WithName("SteerBoid")
                 .ForEach((int entityInQueryIndex, ref HeadingData heading, ref Translation pos, ref Rotation rot) =>
                 {
-                    heading.Value += boidType.alignmentWeight * alignment[entityInQueryIndex] + boidType.separationWeight * separation[entityInQueryIndex];
+                    float3 vectDir = boidType.alignmentWeight * alignment[entityInQueryIndex] + boidType.separationWeight * separation[entityInQueryIndex]
+                                   + boidType.targetWeight * towardTargetVector[entityInQueryIndex].vector;
+
+                    if (avoidPredatorVector[entityInQueryIndex].distanceSq <= boidType.minPredatorDistance * boidType.minPredatorDistance)
+                    {
+                        vectDir = avoidPredatorVector[entityInQueryIndex].vector;
+                    }
+
+                    heading.Value += vectDir;
                     heading.Value = math.normalizesafe(heading.Value);
 
                     rot.Value = quaternion.LookRotationSafe(heading.Value, math.up());
@@ -126,17 +226,23 @@ public class FlockBehaviourSystem : SystemBase
                 })
                 .WithReadOnly(alignment)
                 .WithReadOnly(separation)
-                .ScheduleParallel(calculateFlockVectorHandle);
+                .WithReadOnly(towardTargetVector)
+                .WithReadOnly(avoidPredatorVector)
+                .ScheduleParallel(synchcronizePoint);
 
             Dependency = steerBoidHandle;
             JobHandle disposeJobHandle = multiHashMap.Dispose(Dependency);
             disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, multiHashMapKey.Item1.Dispose(Dependency));
+            disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, targetPos.Dispose(Dependency));
+            disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, predatorPos.Dispose(Dependency));
+            disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, towardTargetVector.Dispose(Dependency));
+            disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, avoidPredatorVector.Dispose(Dependency));
             disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, alignment.Dispose(Dependency));
             disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, separation.Dispose(Dependency));
             disposeJobHandle = JobHandle.CombineDependencies(disposeJobHandle, hashBoidPos.Dispose(Dependency));
             Dependency = disposeJobHandle;
 
-            queries.ResetFilter();
+            boidQueries.ResetFilter();
         }
         boidTypes.Clear();
     }
